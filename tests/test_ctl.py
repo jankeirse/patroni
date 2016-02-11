@@ -24,9 +24,10 @@ from test_postgresql import MockConnect, psycopg2_connect
 
 CONFIG_FILE_PATH = './test-ctl.yaml'
 
+
 def test_rw_config():
     runner = CliRunner()
-    config = {'a':'b'}
+    config = {'a': 'b'}
     with runner.isolated_filesystem():
         store_config(config, CONFIG_FILE_PATH + '/dummy')
         os.remove(CONFIG_FILE_PATH + '/dummy')
@@ -45,6 +46,7 @@ def test_rw_config():
     store_config(config, CONFIG_FILE_PATH)
     load_config(CONFIG_FILE_PATH, None)
     load_config(CONFIG_FILE_PATH, '0.0.0.0')
+
 
 @patch('patroni.ctl.load_config', Mock(return_value={'dcs': {'scheme': 'etcd', 'hostname': 'localhost', 'port': 4001}}))
 class TestCtl(unittest.TestCase):
@@ -213,7 +215,8 @@ y''')
             result = runner.invoke(ctl, ['query', 'alpha', '--command', 'SELECT 1'])
             assert 'mock column' in result.output
 
-            result = runner.invoke(ctl, ['query', 'alpha', '--command', 'SELECT 1', '--dbname', 'dummy', '--password', '--username', 'dummy'], input='password\n')
+            result = runner.invoke(ctl, ['query', 'alpha', '--command', 'SELECT 1', '--dbname', 'dummy',
+                                         '--password', '--username', 'dummy'], input='password\n')
             assert 'mock column' in result.output
 
     @patch('patroni.ctl.get_cursor', Mock(return_value=MockConnect().cursor()))
@@ -384,5 +387,3 @@ leader''')
         ])
 
         assert result.exit_code == 0
-
-

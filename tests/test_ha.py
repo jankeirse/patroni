@@ -27,7 +27,7 @@ def get_cluster_not_initialized_without_leader():
 
 def get_cluster_initialized_without_leader(leader=False, failover=None):
     m = Member(0, 'leader', 28, {'conn_url': 'postgres://replicator:rep-pass@127.0.0.1:5435/postgres',
-                                 'api_url': 'http://127.0.0.1:8008/patroni', 'xlog_location':4})
+                                 'api_url': 'http://127.0.0.1:8008/patroni', 'xlog_location': 4})
     l = Leader(0, 0, m) if leader else None
     o = Member(0, 'other', 28, {'conn_url': 'postgres://replicator:rep-pass@127.0.0.1:5436/postgres',
                                 'api_url': 'http://127.0.0.1:8011/patroni'})
@@ -36,6 +36,7 @@ def get_cluster_initialized_without_leader(leader=False, failover=None):
 
 def get_cluster_initialized_with_leader(failover=None):
     return get_cluster_initialized_without_leader(leader=True, failover=failover)
+
 
 def get_cluster_initialized_with_only_leader(failover=None):
     l = get_cluster_initialized_without_leader(leader=True, failover=failover).leader
@@ -101,20 +102,20 @@ def run_async(func, args=()):
 class TestHa(unittest.TestCase):
 
     @patch('socket.getaddrinfo', socket_getaddrinfo)
-    @patch.object(Client, 'machines')
-    def setUp(self, mock_machines):
-        mock_machines.__get__ = Mock(return_value=['http://remotehost:2379'])
-        self.p = MockPostgresql()
-        self.p.can_create_replica_without_leader = MagicMock(return_value=False)
-        self.e = Etcd('foo', {'ttl': 30, 'host': 'ok:2379', 'scope': 'test'})
-        self.e.client.read = etcd_read
-        self.e.client.write = etcd_write
-        self.e.client.delete = Mock(side_effect=etcd.EtcdException())
-        self.ha = Ha(MockPatroni(self.p, self.e))
-        self.ha._async_executor.run_async = run_async
-        self.ha.old_cluster = self.e.get_cluster()
-        self.ha.cluster = get_cluster_not_initialized_without_leader()
-        self.ha.load_cluster_from_dcs = Mock()
+    def setUp(self):
+        with patch.object(Client, 'machines') as mock_machines:
+            mock_machines.__get__ = Mock(return_value=['http://remotehost:2379'])
+            self.p = MockPostgresql()
+            self.p.can_create_replica_without_leader = MagicMock(return_value=False)
+            self.e = Etcd('foo', {'ttl': 30, 'host': 'ok:2379', 'scope': 'test'})
+            self.e.client.read = etcd_read
+            self.e.client.write = etcd_write
+            self.e.client.delete = Mock(side_effect=etcd.EtcdException())
+            self.ha = Ha(MockPatroni(self.p, self.e))
+            self.ha._async_executor.run_async = run_async
+            self.ha.old_cluster = self.e.get_cluster()
+            self.ha.cluster = get_cluster_not_initialized_without_leader()
+            self.ha.load_cluster_from_dcs = Mock()
 
     def test_update_lock(self):
         self.p.last_operation = Mock(side_effect=PostgresException(''))

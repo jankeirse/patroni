@@ -115,7 +115,7 @@ class Cluster(namedtuple('Cluster', 'initialize,leader,last_leader_operation,mem
         return any(m for m in self.members if m.name == member_name)
 
 
-class AbstractDCS:
+class AbstractDCS(object):
 
     __metaclass__ = abc.ABCMeta
 

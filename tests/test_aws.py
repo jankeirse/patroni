@@ -6,7 +6,7 @@ from patroni.scripts.aws import AWSConnection
 from requests.exceptions import RequestException
 
 
-class MockEc2Connection:
+class MockEc2Connection(object):
 
     def __init__(self, error=False):
         self.error = error
@@ -23,7 +23,7 @@ class MockEc2Connection:
         return True
 
 
-class MockResponse:
+class MockResponse(object):
 
     def __init__(self, content):
         self.content = content

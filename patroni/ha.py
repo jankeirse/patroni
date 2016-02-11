@@ -11,7 +11,7 @@ from multiprocessing.pool import ThreadPool
 logger = logging.getLogger(__name__)
 
 
-class Ha:
+class Ha(object):
 
     def __init__(self, patroni):
         self.patroni = patroni

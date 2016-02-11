@@ -11,7 +11,7 @@ from patroni.dcs import Cluster, DCSError, Leader
 from patroni.etcd import Client, Etcd, EtcdError
 
 
-class MockResponse:
+class MockResponse(object):
 
     def __init__(self):
         self.status_code = 200
@@ -127,7 +127,7 @@ class SleepException(Exception):
     pass
 
 
-class MockSRV:
+class MockSRV(object):
     port = 2380
     target = '127.0.0.1'
 

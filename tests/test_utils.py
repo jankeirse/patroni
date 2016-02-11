@@ -68,7 +68,7 @@ class TestRetrySleeper(unittest.TestCase):
 
     def test_copy(self):
         def _sleep(t):
-            None
+            pass
 
         retry = self._makeOne(sleep_func=_sleep)
         rcopy = retry.copy()

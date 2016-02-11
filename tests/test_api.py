@@ -47,7 +47,7 @@ class MockHa(Mock):
         return [[None, True, None, None, {}]]
 
 
-class MockPatroni:
+class MockPatroni(Mock):
 
     postgresql = MockPostgresql()
     ha = MockHa()
@@ -56,7 +56,7 @@ class MockPatroni:
     version = '0.00'
 
 
-class MockRequest:
+class MockRequest(object):
 
     def __init__(self, path):
         self.path = path

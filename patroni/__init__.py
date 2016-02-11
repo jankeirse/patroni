@@ -15,7 +15,7 @@ from .version import __version__
 logger = logging.getLogger(__name__)
 
 
-class Patroni:
+class Patroni(object):
 
     def __init__(self, config):
         self.nap_time = config['loop_wait']

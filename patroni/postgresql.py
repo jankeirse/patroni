@@ -39,7 +39,7 @@ def parseurl(url):
     return ret
 
 
-class Postgresql:
+class Postgresql(object):
 
     def __init__(self, config):
         self.config = config

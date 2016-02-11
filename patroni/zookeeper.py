@@ -17,7 +17,7 @@ class ZooKeeperError(DCSError):
     pass
 
 
-class ExhibitorEnsembleProvider:
+class ExhibitorEnsembleProvider(object):
 
     TIMEOUT = 3.1
 
