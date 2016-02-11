@@ -29,7 +29,8 @@ class TestUtils(unittest.TestCase):
 @patch('time.sleep', Mock())
 class TestRetrySleeper(unittest.TestCase):
 
-    def _fail(self, times=1):
+    @staticmethod
+    def _fail(times=1):
         scope = dict(times=0)
 
         def inner():
@@ -40,7 +41,8 @@ class TestRetrySleeper(unittest.TestCase):
                 raise PatroniException('Failed!')
         return inner
 
-    def _makeOne(self, *args, **kwargs):
+    @staticmethod
+    def _makeOne(*args, **kwargs):
         return Retry(*args, **kwargs)
 
     def test_reset(self):

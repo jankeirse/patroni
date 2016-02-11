@@ -34,6 +34,7 @@ class MockResponse(object):
     def status(self):
         return self.status_code
 
+    @staticmethod
     def getheader(*args):
         return ''
 
@@ -43,7 +44,8 @@ class MockPostgresql(Mock):
     server_version = '999999'
     scope = 'dummy'
 
-    def last_operation(self):
+    @staticmethod
+    def last_operation():
         return '0'
 
 
@@ -132,7 +134,7 @@ class MockSRV(object):
     target = '127.0.0.1'
 
 
-def dns_query(name, type):
+def dns_query(name, _):
     if name == '_etcd-server._tcp.blabla':
         return []
     elif name == '_etcd-server._tcp.exception':

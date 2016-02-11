@@ -52,38 +52,48 @@ class MockPostgresql(Mock):
     server_version = '999999'
     scope = 'dummy'
 
-    def is_healthy(self):
+    @staticmethod
+    def is_healthy():
         return True
 
-    def start(self):
+    @staticmethod
+    def start():
         return True
 
-    def is_healthiest_node(self, members):
+    @staticmethod
+    def is_healthiest_node(members):
         return True
 
-    def is_leader(self):
+    @staticmethod
+    def is_leader():
         return True
 
-    def xlog_position(self):
+    @staticmethod
+    def xlog_position():
         return 0
 
-    def last_operation(self):
+    @staticmethod
+    def last_operation():
         return 0
 
-    def data_directory_empty(self):
+    @staticmethod
+    def data_directory_empty():
         return False
 
-    def bootstrap(self, *args, **kwargs):
+    @staticmethod
+    def bootstrap(*args, **kwargs):
         return True
 
-    def check_replication_lag(self, last_leader_operation):
+    @staticmethod
+    def check_replication_lag(last_leader_operation):
         return True
 
-    def check_recovery_conf(self, leader):
+    @staticmethod
+    def check_recovery_conf(leader):
         return False
 
 
-class MockPatroni:
+class MockPatroni(object):
 
     def __init__(self, p, d):
         self.postgresql = p

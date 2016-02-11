@@ -19,7 +19,7 @@ def is_file_raise_on_backup(*args, **kwargs):
         raise Exception("foo")
 
 
-class MockCursor:
+class MockCursor(object):
 
     def __init__(self, connection):
         self.connection = connection
@@ -59,7 +59,8 @@ class MockCursor:
     def fetchall(self):
         return self.results
 
-    def close(self):
+    @staticmethod
+    def close():
         pass
 
     def __iter__(self):
