@@ -171,7 +171,7 @@ def watching(w, watch, max_count=None, clear=True):
 
 
 def build_connect_parameters(conn_url, connect_parameters=None):
-    params = connect_parameters or {}
+    params = (connect_parameters or {}).copy()
     parsed = parseurl(conn_url)
     params['host'] = parsed['host']
     params['port'] = parsed['port']
@@ -207,7 +207,7 @@ def get_cursor(cluster, role='master', member=None, connect_parameters=None):
     if member is None:
         return None
 
-    params = build_connect_parameters(member.conn_url, connect_parameters=connect_parameters or {})
+    params = build_connect_parameters(member.conn_url, connect_parameters)
 
     conn = psycopg2.connect(**params)
     conn.autocommit = True
@@ -254,6 +254,8 @@ def dsn(cluster_name, config_file, dcs, role, member):
 @option_format
 @click.option('--format', help='Output format (pretty, json)', default='tsv')
 @click.option('--file', '-f', help='Execute the SQL commands from this file', type=click.File('rb'))
+@click.option('--password', help='force password prompt', is_flag=True)
+@click.option('-U', '--username', help='database user name', type=str)
 @option_dcs
 @option_watch
 @option_watchrefresh
@@ -262,6 +264,7 @@ def dsn(cluster_name, config_file, dcs, role, member):
 @click.option('--member', '-m', help='Query a specific member', type=str)
 @click.option('--delimiter', help='The column delimiter', default='\t')
 @click.option('--command', '-c', help='The SQL commands to execute')
+@click.option('-d', '--dbname', help='database name to connect to', type=str)
 def query(
     cluster_name,
     config_file,
@@ -273,6 +276,9 @@ def query(
     delimiter,
     command,
     file,
+    password,
+    username,
+    dbname,
     format='tsv',
 ):
     if role is not None and member is not None:
@@ -283,6 +289,17 @@ def query(
     if file is not None and command is not None:
         raise PatroniCtlException('--file and --command are mutually exclusive options')
 
+    if file is None and command is None:
+        raise PatroniCtlException('You need to specify either --command or --file')
+
+    connect_parameters = dict()
+    if username:
+        connect_parameters['user'] = username
+    if password:
+        connect_parameters['password'] = click.prompt('Password', hide_input=True, type=str)
+    if dbname:
+        connect_parameters['database'] = dbname
+
     if file is not None:
         command = file.read()
 
@@ -291,17 +308,18 @@ def query(
     cursor = None
     for _ in watching(w, watch, clear=False):
 
-        output, cursor = query_member(cluster=cluster, cursor=cursor, member=member, role=role, command=command)
+        output, cursor = query_member(cluster=cluster, cursor=cursor, member=member, role=role, command=command,
+                                      connect_parameters=connect_parameters)
         print_output(None, output, format=format, delimiter=delimiter)
 
         if cursor is None:
             cluster = dcs.get_cluster()
 
 
-def query_member(cluster, cursor, member, role, command):
+def query_member(cluster, cursor, member, role, command, connect_parameters=None):
     try:
         if cursor is None:
-            cursor = get_cursor(cluster, role=role, member=member)
+            cursor = get_cursor(cluster, role=role, member=member, connect_parameters=connect_parameters)
 
         if cursor is None:
             if role is None:

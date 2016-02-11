@@ -128,16 +128,25 @@ class Postgresql:
                 break
         return local_address + ':' + self.port
 
+    @property
+    def _connect_kwargs(self):
+        r = parseurl('postgres://{0}/postgres'.format(self.local_address))
+        if 'username' in self.superuser:
+            r['user'] = self.superuser['username']
+        if 'password' in self.superuser:
+            r['password'] = self.superuser['password']
+        return r
+
     def connection(self):
         if not self._connection or self._connection.closed != 0:
-            r = parseurl('postgres://{0}/postgres'.format(self.local_address))
-            self._connection = psycopg2.connect(**r)
+            self._connection = psycopg2.connect(**self._connect_kwargs)
             self._connection.autocommit = True
+            self.server_version = self._connection.server_version
         return self._connection
 
     def _cursor(self):
         if not self._cursor_holder or self._cursor_holder.closed or self._cursor_holder.connection.closed != 0:
-            logger.info("established a new patroni connection to the postgres cluster")
+            logger.info("establishing a new patroni connection to the postgres cluster")
             self._cursor_holder = self.connection().cursor()
         return self._cursor_holder
 
@@ -192,11 +201,15 @@ class Postgresql:
         self.set_state('initalizing new cluster')
         options = self.get_initdb_options()
         pwfile = None
-        if self.superuser and 'username' not in self.superuser and 'password' in self.superuser:
-            (fd, pwfile) = tempfile.mkstemp()
-            os.write(fd, self.superuser['password'].encode())
-            os.close(fd)
-            options.append('--pwfile={0}'.format(pwfile))
+
+        if self.superuser:
+            if 'username' in self.superuser:
+                options.append('--username={0}'.format(self.superuser['username']))
+            if 'password' in self.superuser:
+                (fd, pwfile) = tempfile.mkstemp()
+                os.write(fd, self.superuser['password'].encode())
+                os.close(fd)
+                options.append('--pwfile={0}'.format(pwfile))
 
         ret = subprocess.call(self._pg_ctl + ['initdb'] + (['-o', ' '.join(options)] if options else [])) == 0
         if pwfile:
@@ -219,10 +232,10 @@ class Postgresql:
         env['PGPASSFILE'] = self.pgpass
         return env
 
-    def sync_from_leader(self, leader):
-        r = parseurl(leader.conn_url)
-
-        env = self.write_pgpass(r)
+    def sync_replica(self, leader):
+        if leader:
+            r = parseurl(leader.conn_url)
+        env = self.write_pgpass(r) if leader else os.environ.copy()
         ret = self.create_replica(leader, env) == 0
         ret and self.delete_trigger_file()
         return ret
@@ -235,14 +248,30 @@ class Postgresql:
         """
         return ' '.join('{0}={1}'.format(param, val) for param, val in sorted(conn.items()))
 
+    def replica_method_can_work_without_leader(self, method):
+        return method != 'basebackup' and self.config and self.config.get(method, {}).get('no_master')
+
+    def can_create_replica_without_leader(self):
+        """ go through the replication methods to see if there are ones
+            that does not require a running leader to create the replica.
+        """
+        replica_methods = self.config.get('create_replica_method', [])
+        for replica_method in replica_methods:
+            if self.replica_method_can_work_without_leader(replica_method):
+                return True
+        return False
+
     def create_replica(self, leader, env):
         # create the replica according to the replica_method
         # defined by the user.  this is a list, so we need to
         # loop through all methods the user supplies
-        connstring = leader.conn_url
+        connstring = leader.conn_url if leader else ""
         # get list of replica methods from config.
         # If there is no configuration key, or no value is specified, use basebackup
         replica_methods = self.config.get('create_replica_method') or ['basebackup']
+        # if we don't have any leader, leave only replica methods that work without it
+        replica_methods = [r for r in replica_methods if self.replica_method_can_work_without_leader(r)] if not leader \
+            else replica_methods
         # go through them in priority order
         ret = 1
         for replica_method in replica_methods:
@@ -331,7 +360,10 @@ class Postgresql:
         if not block_callbacks:
             self.set_state('starting')
 
-        ret = subprocess.call(self._pg_ctl + ['start', '-o', self.server_options()]) == 0
+        env = os.environ.copy()
+        if 'username' in self.superuser:
+            env['PGUSER'] = self.superuser['username']
+        ret = subprocess.call(self._pg_ctl + ['start', '-o', self.server_options()], env=env, preexec_fn=os.setsid) == 0
 
         self.set_state('running' if ret else 'start failed')
 
@@ -342,10 +374,12 @@ class Postgresql:
         ret and not block_callbacks and self.call_nowait(ACTION_ON_START)
         return ret
 
-    def checkpoint(self, connstring=None):
+    def checkpoint(self, connect_kwargs=None):
+        connect_kwargs = connect_kwargs or self._connect_kwargs
+        for p in ['connect_timeout', 'options']:
+            connect_kwargs.pop(p, None)
         try:
-            connstring = connstring or 'postgres://{0}/postgres'.format(self.local_address)
-            with psycopg2.connect(connstring) as conn:
+            with psycopg2.connect(**connect_kwargs) as conn:
                 conn.autocommit = True
                 with conn.cursor() as cur:
                     cur.execute("SET statement_timeout = 0")
@@ -435,7 +469,7 @@ class Postgresql:
                     return pattern and (pattern in line)
         return not pattern
 
-    def write_recovery_conf(self, leader):
+    def write_recovery_conf(self, leader, bootstrap=False):
         with open(self.recovery_conf, 'w') as f:
             f.write("""standby_mode = 'on'
 recovery_target_timeline = 'latest'
@@ -444,6 +478,7 @@ recovery_target_timeline = 'latest'
                 f.write("""primary_conninfo = '{0}'\n""".format(self.primary_conninfo(leader.conn_url)))
                 if self.use_slots:
                     f.write("""primary_slot_name = '{0}'\n""".format(self.name))
+            if (leader and leader.conn_url) or bootstrap:
                 for name, value in self.config.get('recovery_conf', {}).items():
                     f.write("{0} = '{1}'\n".format(name, value))
 
@@ -451,12 +486,12 @@ recovery_target_timeline = 'latest'
         # prepare pg_rewind connection
         r = parseurl(leader.conn_url)
         r.update(self.pg_rewind)
-        r['user'] = r['username']
+        r['user'] = r.pop('username')
         env = self.write_pgpass(r)
         pc = "user={user} host={host} port={port} dbname=postgres sslmode=prefer sslcompression=1".format(**r)
         # first run a checkpoint on a promoted master in order
         # to make it store the new timeline (5540277D.8020309@iki.fi)
-        self.checkpoint(pc)
+        self.checkpoint(r)
         logger.info("running pg_rewind from {0}".format(pc))
         pg_rewind = ['pg_rewind', '-D', self.data_dir, '--source-server', pc]
         try:
@@ -524,7 +559,7 @@ recovery_target_timeline = 'latest'
                 except:
                     logger.exception("Unable to remove {0}".format(path))
 
-    def follow_the_leader(self, leader, recovery=False):
+    def follow(self, leader, recovery=False):
         if not self.check_recovery_conf(leader) or recovery:
             change_role = (self.role == 'master')
 
@@ -596,9 +631,6 @@ recovery_target_timeline = 'latest'
             self.call_nowait(ACTION_ON_ROLE_CHANGE)
         return ret
 
-    def demote(self):
-        self.follow_the_leader(None)
-
     def create_or_update_role(self, name, password, options):
         self.query("""DO $$
 BEGIN
@@ -615,11 +647,8 @@ $$""".format(name, options), name, password, password)
     def create_replication_user(self):
         self.create_or_update_role(self.replication['username'], self.replication['password'], 'REPLICATION')
 
-    def create_connection_users(self):
-        if 'username' in self.superuser:
-            self.create_or_update_role(self.superuser['username'], self.superuser['password'], 'SUPERUSER')
-        if self.admin:
-            self.create_or_update_role(self.admin['username'], self.admin['password'], 'CREATEDB CREATEROLE')
+    def create_connection_user(self):
+        self.admin and self.create_or_update_role(self.admin['username'], self.admin['password'], 'CREATEDB CREATEROLE')
 
     def xlog_position(self):
         return self.query("""SELECT pg_xlog_location_diff(CASE WHEN pg_is_in_recovery()
@@ -637,7 +666,18 @@ $$""".format(name, options), name, password, password)
         if self.use_slots:
             try:
                 self.load_replication_slots()
-                slots = [m.name for m in cluster.members if m.name != self.name] if self.role == 'master' else []
+                # if the replicatefrom tag is set on the member - we should not create the replication slot for it on
+                # the current master, because that member would replicate from elsewhere. We still create the slot if
+                # the replicatefrom destination member is currently not a member of the cluster (fallback to the
+                # master), or if replicatefrom destination member happens to be the current master
+                if self.role == 'master':
+                    slots = [m.name for m in cluster.members if m.name != self.name and
+                             (m.replicatefrom is None or m.replicatefrom == self.name or
+                              not cluster.has_member(m.replicatefrom))]
+                else:
+                    # only manage slots for replicas that replicate from this one, except for the leader among them
+                    slots = [m.name for m in cluster.members if m.replicatefrom == self.name and
+                             m.name != cluster.leader.name]
                 # drop unused slots
                 for slot in set(self.replication_slots) - set(slots):
                     self.query("""SELECT pg_drop_replication_slot(%s)
@@ -657,28 +697,38 @@ $$""".format(name, options), name, password, password)
     def last_operation(self):
         return str(self.xlog_position())
 
-    def bootstrap(self, current_leader=None):
+    def bootstrap(self, cluster_initialized=False, current_leader=None):
         """
-            Initially bootstrap PostgreSQL, either by creating a data
-            directory with initdb, or by initalizing a replica from an
-            exiting leader. Failure in the first case always leads to
-            exception, since there is no point in continuing if initdb failed.
-            In the second case, however, a False is returned on failure, since
-            it is normal for the replica to retry a failed attempt to initialize
-            from the master.
+            Populate PostgreSQL data directory by doing one of the following:
+             - create with initdb if there is no master.
+             - initialize the replica from an existing master
+             - initialize the replica using the replica creation method that
+               works without the master (i.e. restore from on-disk base backup)
+
+            The choice between the last 2 is triggered by the initialize flag.
+            We should never try to initdb an already initialized cluster, nor
+            try to bootstrap the cluster that lacks the initialize key from from
+            the master-less replica creation method (in the latter case, there is
+            no clear inidicator of the moment we should abandon our attempts and
+            swich to initdb).
+
+            Failure during initdb always leads to an exception, since there is
+            no point in continuing if initdb fails. For the rest of the cases,
+            the function returns False in order to inidicate a failed attempt
+            that should be retried in the future.
         """
         ret = False
-        if not current_leader:
+        if not (cluster_initialized or current_leader):
             ret = self.initialize() and self.start()
             if ret:
                 self.create_replication_user()
-                self.create_connection_users()
+                self.create_connection_user()
             else:
                 raise PostgresException("Could not bootstrap master PostgreSQL")
         else:
-            if self.sync_from_leader(current_leader):
+            if self.sync_replica(current_leader):
                 self.restore_configuration_files()
-                self.write_recovery_conf(current_leader)
+                self.write_recovery_conf(current_leader, True)
                 ret = self.start()
         return ret
 
