@@ -74,9 +74,8 @@ def load_config(path, dcs):
 
 def store_config(config, path):
     dir_path = os.path.dirname(path)
-    if dir_path:
-        if not os.path.isdir(dir_path):
-            os.makedirs(dir_path)
+    if dir_path and not os.path.isdir(dir_path):
+        os.makedirs(dir_path)
     with open(path, 'w') as fd:
         yaml.dump(config, fd)
 
@@ -376,7 +375,7 @@ def remove(config_file, cluster_name, format, dcs):
         if confirm != cluster.leader.name:
             raise PatroniCtlException('You did not specify the current master of the cluster')
 
-    dcs.client.delete(dcs._base_path, recursive=True)
+    dcs.client.delete(dcs.client_path(''), recursive=True)
 
 
 def wait_for_leader(dcs, timeout=30):

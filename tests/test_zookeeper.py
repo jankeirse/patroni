@@ -72,9 +72,8 @@ class MockKazooClient(Mock):
             raise TypeError("Invalid type for 'value' (must be a byte string)")
         if path == '/service/bla/optime/leader':
             raise Exception
-        if path == '/service/test/members/bar':
-            if value == b'retry':
-                return
+        if path == '/service/test/members/bar' and value == b'retry':
+            return
         if path == '/service/test/failover':
             if value == b'Exception':
                 raise Exception

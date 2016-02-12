@@ -155,6 +155,10 @@ def psycopg2_connect(*args, **kwargs):
     return MockConnect()
 
 
+def fake_listdir(path):
+    return ["a", "b", "c"] if path.endswith('pg_xlog/archive_status') else []
+
+
 @patch('subprocess.call', Mock(return_value=0))
 @patch('psycopg2.connect', psycopg2_connect)
 class TestPostgresql(unittest.TestCase):
@@ -436,11 +440,6 @@ class TestPostgresql(unittest.TestCase):
                                                       stderr=subprocess.STDOUT)
         subprocess_popen_mock.return_value = None
         self.assertEquals(self.p.single_user_mode(), 1)
-
-    def fake_listdir(path):
-        if path.endswith(os.path.join('pg_xlog', 'archive_status')):
-            return ["a", "b", "c"]
-        return []
 
     @patch('os.listdir', MagicMock(side_effect=fake_listdir))
     @patch('os.path.isdir', MagicMock(return_value=True))

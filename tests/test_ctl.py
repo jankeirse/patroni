@@ -188,9 +188,8 @@ y''')
             assert 'mutually exclusive' in str(result.output)
 
             with runner.isolated_filesystem():
-                dummy_file = open('dummy', 'w')
-                dummy_file.write('SELECT 1')
-                dummy_file.close()
+                with open('dummy', 'w') as dummy_file:
+                    dummy_file.write('SELECT 1')
 
                 result = runner.invoke(ctl, [
                     'query',

@@ -86,9 +86,9 @@ def etcd_watch(key, index=None, timeout=None, recursive=None):
 def etcd_write(key, value, **kwargs):
     if key == '/service/exists/leader':
         raise etcd.EtcdAlreadyExist
-    if key == '/service/test/leader' or key == '/patroni/test/leader':
-        if kwargs.get('prevValue') == 'foo' or not kwargs.get('prevExist', True):
-            return True
+    if key in ['/service/test/leader', '/patroni/test/leader'] and \
+            (kwargs.get('prevValue') == 'foo' or not kwargs.get('prevExist', True)):
+        return True
     raise etcd.EtcdException
 
 
