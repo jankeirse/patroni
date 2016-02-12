@@ -106,10 +106,7 @@ class MockPatroni(object):
 
 
 def run_async(func, args=()):
-    if args:
-        func(*args)
-    else:
-        func()
+    return func(*args) if args else func()
 
 
 class TestHa(unittest.TestCase):

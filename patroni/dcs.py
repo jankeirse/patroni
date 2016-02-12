@@ -51,7 +51,7 @@ class Member(namedtuple('Member', 'index,name,session,data')):
         else:
             try:
                 data = json.loads(data)
-            except:
+            except (TypeError, ValueError):
                 data = {}
         return Member(index, name, session, data)
 

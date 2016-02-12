@@ -239,7 +239,7 @@ class TestPostgresql(unittest.TestCase):
         self.p.create_replica = Mock(return_value=1)
         self.assertFalse(self.p.sync_replica(self.leader))
 
-    @patch('subprocess.call', side_effect=Exception("Test"))
+    @patch('subprocess.call', side_effect=OSError)
     @patch('patroni.postgresql.Postgresql.write_pgpass', MagicMock(return_value=dict()))
     def test_pg_rewind(self, mock_call):
         self.assertTrue(self.p.rewind(self.leader))
@@ -382,7 +382,7 @@ class TestPostgresql(unittest.TestCase):
         open(self.p.data_dir, 'w').close()
         self.p.remove_data_directory()
         os.symlink('unexisting', self.p.data_dir)
-        with patch('os.unlink', Mock(side_effect=Exception)):
+        with patch('os.unlink', Mock(side_effect=OSError)):
             self.p.remove_data_directory()
         self.p.remove_data_directory()
 
@@ -465,8 +465,8 @@ class TestPostgresql(unittest.TestCase):
         mock_unlink.reset_mock()
         mock_remove.reset_mock()
 
-        mock_file.side_effect = Exception("foo")
-        mock_link.side_effect = Exception("foo")
+        mock_file.side_effect = OSError
+        mock_link.side_effect = OSError
         self.p.cleanup_archive_status()
         mock_unlink.assert_not_called()
         mock_remove.assert_not_called()
@@ -476,12 +476,12 @@ class TestPostgresql(unittest.TestCase):
         self.assertEqual(self.p.sysid, "6200971513092291716")
 
     @patch('os.path.isfile', Mock(return_value=True))
-    @patch('shutil.copy', Mock(side_effect=Exception))
+    @patch('shutil.copy', Mock(side_effect=IOError))
     def test_save_configuration_files(self):
         self.p.save_configuration_files()
 
     @patch('os.path.isfile', Mock(side_effect=[False, True]))
-    @patch('shutil.copy', Mock(side_effect=Exception))
+    @patch('shutil.copy', Mock(side_effect=IOError))
     def test_restore_configuration_files(self):
         self.p.restore_configuration_files()
 

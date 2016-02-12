@@ -324,7 +324,7 @@ class Postgresql(object):
         cmd = self.callback[cb_name]
         try:
             subprocess.Popen(shlex.split(cmd) + [cb_name, self.role, self.scope])
-        except:
+        except OSError:
             logger.exception('callback %s %s %s %s failed', cmd, cb_name, self.role, self.scope)
             return False
         return True
@@ -385,7 +385,7 @@ class Postgresql(object):
                 with conn.cursor() as cur:
                     cur.execute("SET statement_timeout = 0")
                     cur.execute('CHECKPOINT')
-        except:
+        except psycopg2.Error:
             logging.exception('Exception during CHECKPOINT')
 
     def stop(self, mode='fast', block_callbacks=False):
@@ -495,8 +495,8 @@ recovery_target_timeline = 'latest'
         logger.info("running pg_rewind from {0}".format(pc))
         pg_rewind = ['pg_rewind', '-D', self.data_dir, '--source-server', pc]
         try:
-            ret = (subprocess.call(pg_rewind, env=env) == 0)
-        except:
+            ret = subprocess.call(pg_rewind, env=env) == 0
+        except OSError:
             ret = False
         if ret:
             self.write_recovery_conf(leader)
@@ -557,7 +557,7 @@ recovery_target_timeline = 'latest'
                         os.unlink(path)
                     elif os.path.isfile(path):
                         os.remove(path)
-                except:
+                except OSError:
                     logger.exception("Unable to remove %s", path)
 
     def follow(self, leader, recovery=False):
@@ -612,7 +612,7 @@ recovery_target_timeline = 'latest'
             for f in self.configuration_to_save:
                 if os.path.isfile(f):
                     shutil.copy(f, f + '.backup')
-        except:
+        except IOError:
             logger.exception('unable to create backup copies of configuration files')
 
     def restore_configuration_files(self):
@@ -621,7 +621,7 @@ recovery_target_timeline = 'latest'
             for f in self.configuration_to_save:
                 if not os.path.isfile(f) and os.path.isfile(f + '.backup'):
                     shutil.copy(f + '.backup', f)
-        except:
+        except IOError:
             logger.exception('unable to restore configuration files from backup')
 
     def promote(self):
@@ -696,7 +696,7 @@ $$""".format(name, options), name, password, password)
                                    WHERE slot_name = %s)""", slot, slot)
 
                 self.replication_slots = slots
-            except:
+            except psycopg2.Error:
                 logger.exception('Exception when changing replication slots')
 
     def last_operation(self):
@@ -743,7 +743,7 @@ $$""".format(name, options), name, password, password)
                 new_name = '{0}_{1}'.format(self.data_dir, time.strftime('%Y-%m-%d-%H-%M-%S'))
                 logger.info('renaming data directory to %s', new_name)
                 os.rename(self.data_dir, new_name)
-            except:
+            except OSError:
                 logger.exception("Could not rename data directory %s", self.data_dir)
 
     def remove_data_directory(self):
@@ -757,7 +757,7 @@ $$""".format(name, options), name, password, password)
                 os.remove(self.data_dir)
             elif os.path.isdir(self.data_dir):
                 shutil.rmtree(self.data_dir)
-        except:
+        except (IOError, OSError):
             logger.exception('Could not remove data directory %s', self.data_dir)
             self.move_data_directory()
 
