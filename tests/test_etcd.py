@@ -176,6 +176,7 @@ class TestClient(unittest.TestCase):
         self.client._machines_cache = []
         self.assertRaises(etcd.EtcdConnectionFailed, self.client.api_execute, '/', 'GET')
         self.assertTrue(self.client._update_machines_cache)
+        self.assertRaises(etcd.EtcdException, self.client.api_execute, '/', 'GET')
 
     def test_get_srv_record(self):
         self.assertEquals(self.client.get_srv_record('blabla'), [])

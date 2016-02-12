@@ -110,9 +110,8 @@ class Ha(object):
                            refresh=True, recovery=True)
 
     def follow(self, demote_reason, follow_reason, refresh=True, recovery=False):
-        refresh and self.load_cluster_from_dcs()
-        ret = demote_reason if (not recovery and self.state_handler.is_leader() or
-                                recovery and self.state_handler.role == 'master') else follow_reason
+        if refresh:
+            self.load_cluster_from_dcs()
         # determine the node to follow. If replicatefrom tag is set,
         # try to follow the node mentioned there, otherwise, follow the leader.
         if self.patroni.replicatefrom:
@@ -124,7 +123,9 @@ class Ha(object):
         if not self.state_handler.check_recovery_conf(node_to_follow) or recovery:
             self._async_executor.schedule('changing primary_conninfo and restarting')
             self._async_executor.run_async(self.state_handler.follow, (node_to_follow, recovery))
-        return ret
+        if not recovery and self.state_handler.is_leader() or recovery and self.state_handler.role == 'master':
+            return demote_reason
+        return follow_reason
 
     def enforce_master_role(self, message, promote_message):
         if self.state_handler.is_leader() or self.state_handler.role == 'master':

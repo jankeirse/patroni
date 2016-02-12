@@ -157,7 +157,6 @@ def psycopg2_connect(*args, **kwargs):
 
 @patch('subprocess.call', Mock(return_value=0))
 @patch('psycopg2.connect', psycopg2_connect)
-@patch('shutil.copy', Mock())
 class TestPostgresql(unittest.TestCase):
 
     @patch('subprocess.call', Mock(return_value=0))
@@ -206,6 +205,11 @@ class TestPostgresql(unittest.TestCase):
         self.assertTrue(self.p.initialize())
         self.assertTrue(os.path.exists(os.path.join(self.p.data_dir, 'pg_hba.conf')))
 
+    @patch('os.path.exists', Mock(return_value=True))
+    @patch('os.unlink', Mock())
+    def test_delete_trigger_file(self):
+        self.p.delete_trigger_file()
+
     def test_start(self):
         self.assertTrue(self.p.start())
         self.p.is_running = false
@@ -232,6 +236,8 @@ class TestPostgresql(unittest.TestCase):
     @patch('patroni.postgresql.Postgresql.write_pgpass', MagicMock(return_value=dict()))
     def test_sync_replica(self):
         self.assertTrue(self.p.sync_replica(self.leader))
+        self.p.create_replica = Mock(return_value=1)
+        self.assertFalse(self.p.sync_replica(self.leader))
 
     @patch('subprocess.call', side_effect=Exception("Test"))
     @patch('patroni.postgresql.Postgresql.write_pgpass', MagicMock(return_value=dict()))
@@ -469,16 +475,14 @@ class TestPostgresql(unittest.TestCase):
     def test_sysid(self):
         self.assertEqual(self.p.sysid, "6200971513092291716")
 
-    @patch('os.path.isfile', MagicMock(return_value=True))
-    @patch('shutil.copy', side_effect=Exception)
-    def test_save_configuration_files(self, mock_copy):
-        shutil.copy = mock_copy
+    @patch('os.path.isfile', Mock(return_value=True))
+    @patch('shutil.copy', Mock(side_effect=Exception))
+    def test_save_configuration_files(self):
         self.p.save_configuration_files()
 
-    @patch('os.path.isfile', MagicMock(side_effect=is_file_raise_on_backup))
-    @patch('shutil.copy', side_effect=Exception)
-    def test_restore_configuration_files(self, mock_copy):
-        shutil.copy = mock_copy
+    @patch('os.path.isfile', Mock(side_effect=[False, True]))
+    @patch('shutil.copy', Mock(side_effect=Exception))
+    def test_restore_configuration_files(self):
         self.p.restore_configuration_files()
 
     def test_can_create_replica_without_leader(self):

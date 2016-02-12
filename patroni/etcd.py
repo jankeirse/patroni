@@ -51,7 +51,8 @@ class Client(etcd.Client):
 
     def api_execute(self, path, method, **kwargs):
         # Update machines_cache if previous attempt of update has failed
-        self._update_machines_cache and self._load_machines_cache()
+        if self._update_machines_cache:
+            self._load_machines_cache()
         try:
             return super(Client, self).api_execute(path, method, **kwargs)
         except etcd.EtcdConnectionFailed:
@@ -132,7 +133,9 @@ class Client(etcd.Client):
         # After filling up initial list of machines_cache we should ask etcd-cluster about actual list
         self._base_uri = self._machines_cache.pop(0)
         self._machines_cache = self.machines
-        self._base_uri in self._machines_cache and self._machines_cache.remove(self._base_uri)
+
+        if self._base_uri in self._machines_cache:
+            self._machines_cache.remove(self._base_uri)
 
         self._update_machines_cache = False
 

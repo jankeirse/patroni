@@ -221,7 +221,8 @@ class Postgresql(object):
         return ret
 
     def delete_trigger_file(self):
-        os.path.exists(self.trigger_file) and os.unlink(self.trigger_file)
+        if os.path.exists(self.trigger_file):
+            os.unlink(self.trigger_file)
 
     def write_pgpass(self, record):
         with open(self.pgpass, 'w') as f:
@@ -233,12 +234,11 @@ class Postgresql(object):
         return env
 
     def sync_replica(self, leader):
-        if leader:
-            r = parseurl(leader.conn_url)
-        env = self.write_pgpass(r) if leader else os.environ.copy()
-        ret = self.create_replica(leader, env) == 0
-        ret and self.delete_trigger_file()
-        return ret
+        env = self.write_pgpass(parseurl(leader.conn_url)) if leader else os.environ.copy()
+        if self.create_replica(leader, env) == 0:
+            self.delete_trigger_file()
+            return True
+        return False
 
     @staticmethod
     def build_connstring(conn):
@@ -371,7 +371,8 @@ class Postgresql(object):
         self.save_configuration_files()
         # block_callbacks is used during restart to avoid
         # running start/stop callbacks in addition to restart ones
-        ret and not block_callbacks and self.call_nowait(ACTION_ON_START)
+        if ret and not block_callbacks:
+            self.call_nowait(ACTION_ON_START)
         return ret
 
     def checkpoint(self, connect_kwargs=None):
@@ -394,9 +395,8 @@ class Postgresql(object):
         # patroni.
 
         self.close_connection()
-        if not self.is_running():
-            if not block_callbacks:
-                self.set_state('stopped')
+        if not self.is_running() and not block_callbacks:
+            self.set_state('stopped')
             return True
 
         if block_callbacks:
@@ -416,7 +416,8 @@ class Postgresql(object):
 
     def reload(self):
         ret = subprocess.call(self._pg_ctl + ['reload']) == 0
-        ret and self.call_nowait(ACTION_ON_RELOAD)
+        if ret:
+            self.call_nowait(ACTION_ON_RELOAD)
         return ret
 
     def restart(self):
@@ -441,8 +442,7 @@ class Postgresql(object):
         return True
 
     def check_replication_lag(self, last_leader_operation):
-        return (last_leader_operation if last_leader_operation else 0) - self.xlog_position() <=\
-            self.config.get('maximum_lag_on_failover', 0)
+        return (last_leader_operation or 0) - self.xlog_position() <= self.config.get('maximum_lag_on_failover', 0)
 
     def write_pg_hba(self):
         with open(os.path.join(self.data_dir, 'pg_hba.conf'), 'a') as f:
@@ -541,7 +541,8 @@ recovery_target_timeline = 'latest'
         cmd.append('postgres')
         p = subprocess.Popen(cmd, stdin=subprocess.PIPE, stdout=open(os.devnull, 'w'), stderr=subprocess.STDOUT)
         if p:
-            command and p.communicate('{0}\n'.format(command))
+            if command:
+                p.communicate('{0}\n'.format(command))
             p.stdin.close()
             return p.wait()
         return 1
@@ -557,7 +558,7 @@ recovery_target_timeline = 'latest'
                     elif os.path.isfile(path):
                         os.remove(path)
                 except:
-                    logger.exception("Unable to remove {0}".format(path))
+                    logger.exception("Unable to remove %s", path)
 
     def follow(self, leader, recovery=False):
         if not self.check_recovery_conf(leader) or recovery:
@@ -595,7 +596,8 @@ recovery_target_timeline = 'latest'
                     self.remove_data_directory()
                     ret = True
                 self._need_rewind = False
-            change_role and ret and self.call_nowait(ACTION_ON_ROLE_CHANGE)
+            if change_role and ret:
+                self.call_nowait(ACTION_ON_ROLE_CHANGE)
             return ret
         else:
             return True
@@ -608,7 +610,8 @@ recovery_target_timeline = 'latest'
         """
         try:
             for f in self.configuration_to_save:
-                os.path.isfile(f) and shutil.copy(f, f + '.backup')
+                if os.path.isfile(f):
+                    shutil.copy(f, f + '.backup')
         except:
             logger.exception('unable to create backup copies of configuration files')
 
@@ -616,7 +619,8 @@ recovery_target_timeline = 'latest'
         """ restore a previously saved postgresql.conf """
         try:
             for f in self.configuration_to_save:
-                not os.path.isfile(f) and os.path.isfile(f + '.backup') and shutil.copy(f + '.backup', f)
+                if not os.path.isfile(f) and os.path.isfile(f + '.backup'):
+                    shutil.copy(f + '.backup', f)
         except:
             logger.exception('unable to restore configuration files from backup')
 
@@ -648,7 +652,8 @@ $$""".format(name, options), name, password, password)
         self.create_or_update_role(self.replication['username'], self.replication['password'], 'REPLICATION')
 
     def create_connection_user(self):
-        self.admin and self.create_or_update_role(self.admin['username'], self.admin['password'], 'CREATEDB CREATEROLE')
+        if self.admin:
+            self.create_or_update_role(self.admin['username'], self.admin['password'], 'CREATEDB CREATEROLE')
 
     def xlog_position(self):
         return self.query("""SELECT pg_xlog_location_diff(CASE WHEN pg_is_in_recovery()
